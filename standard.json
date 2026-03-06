@@ -1,0 +1,87 @@
+{
+  "message_type": {
+    "ENVOI": ["IMAGE", "AUDIO", "TEXT", "SENSOR"],
+    "RECEPTION": ["IMAGE", "AUDIO", "TEXT", "SENSOR"],
+    "OTHER": ["DECLARATION", "SYS_MESSAGE", "WARNING"]
+  },
+  "sensor_id": {
+    "enum": ["LIGHT", "BUTTON", "JOYSTICK", "TEMPERATURE", "RFID", "ACCELEROMETER", "ULTRASONIC", "LED"]
+  },
+  "message_schema": {
+    "type": "object",
+    "properties": {
+      "message_type": {
+        "type": "string"
+      },
+      "data": {
+        "type": "object",
+        "properties": {
+          "emitter": { "type": "string" },
+          "receiver": { "type": "string" },
+          "sensor_id": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "sensor_value_schemas": {
+    "BUTTON": {
+      "type": "object",
+      "properties": {
+        "isPressed": { "type": "boolean" }
+      }
+    },
+    "JOYSTICK": {
+      "type": "object",
+      "properties": {
+        "direction": { "type": "string", "enum": ["CENTER", "UP", "DOWN", "LEFT", "RIGHT", "UP_LEFT", "UP_RIGHT", "DOWN_LEFT", "DOWN_RIGHT"] },
+        "button": { "type": "boolean" }
+      }
+    },
+    "LIGHT": {
+      "type": "object",
+      "properties": {
+        "raw": { "type": "integer", "min": 0, "max": 4095 },
+        "percentage": { "type": "integer", "min": 0, "max": 100 }
+      }
+    },
+    "TEMPERATURE": {
+      "type": "object",
+      "properties": {
+        "temperature": { "type": "number" },
+        "humidity": { "type": "number", "min": 0, "max": 100 }
+      }
+    },
+    "RFID": {
+      "type": "object",
+      "properties": {
+        "detected": { "type": "boolean" },
+        "uud": { "type": "string", "description": "ID du tag si détecté" }
+      }
+    },
+    "ACCELEROMETER": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "z": { "type": "integer" }
+      }
+    },
+    "ULTRASONIC": {
+      "type": "object",
+      "properties": {
+        "distance_cm": { "type": "number", "min": 0, "description": "Distance en cm" }
+      }
+    },
+    "LED": {
+      "type": "object",
+      "properties": {
+        "led_count": { "type": "integer", "min": 0, "max": 27, "description": "Nombre de LEDs a allumer" }
+      }
+    }
+  }
+}

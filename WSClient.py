@@ -1,9 +1,20 @@
 import websocket
 import threading
 import base64
+import os
+import sys
+
+_NL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nl_to_code")
+sys.path.insert(0, _NL_DIR)
+from nl_to_code import execute_code_from
+
+import importlib.util as _ilu
+_nl_main_spec = _ilu.spec_from_file_location("nl_main", os.path.join(_NL_DIR, "main.py"))
+_nl_main = _ilu.module_from_spec(_nl_main_spec)
+_nl_main_spec.loader.exec_module(_nl_main)
 
 from Context import Context
-from Message import Message, MessageType
+from Message import Message, MessageType, SENSOR_ID
 
 
 try:
@@ -38,6 +49,39 @@ class WSClient(QObject):
 
     def on_message(self, ws, message):
         received_msg = Message.from_json(message)
+
+        # Message @IA → traitement nl_to_code
+        if isinstance(received_msg.value, str) and received_msg.value.startswith("@IA"):
+            nl = received_msg.value[len("@IA"):].strip()
+            threading.Thread(target=self._handle_ia, args=(nl, received_msg.emitter), daemon=True).start()
+            return
+
+        # Sensor ESP_KILLIAN RFID/BUTTON/JOYSTICK → écriture en mémoire
+        if (received_msg.message_type == MessageType.RECEPTION.SENSOR
+                and received_msg.emitter == "ESP_KILLIAN"
+                and received_msg.sensor_id in (SENSOR_ID.RFID, SENSOR_ID.BUTTON, SENSOR_ID.JOYSTICK)):
+            threading.Thread(
+                target=self._write_sensor_to_memory,
+                args=(received_msg.sensor_id, received_msg.value),
+                daemon=True
+            ).start()
+            return
+
+        # Sensor BUTTON click → déclenche piper TTS
+        if received_msg.message_type == MessageType.RECEPTION.SENSOR:
+            print(f"[DEBUG SENSOR] sensor_id={repr(received_msg.sensor_id)} value={repr(received_msg.value)}")
+            if received_msg.sensor_id == "BUTTON" and isinstance(received_msg.value, dict) and received_msg.value.get("isPressed") == True:
+                import subprocess
+                print("[DEBUG] Lancement piper...")
+                try:
+                    proc = subprocess.Popen(
+                        ["python3", "-m", "piper", "-m", "fr_FR-tom-medium",
+                         "--", "Attention, intrusion détectée dans la base secrète. Accès accordé au commandant Killian. Bonne journée, chef."]
+                    )
+                    print(f"[DEBUG] piper lancé pid={proc.pid}")
+                except Exception as e:
+                    print(f"[DEBUG] Erreur lancement piper: {e}")
+                return
 
         # Répondre au ping du serveur
         if received_msg.message_type == MessageType.SYS_MESSAGE and received_msg.value == "ping":
@@ -74,6 +118,40 @@ class WSClient(QObject):
         if received_msg.message_type in [MessageType.RECEPTION.TEXT, MessageType.RECEPTION.IMAGE, MessageType.RECEPTION.AUDIO, MessageType.RECEPTION.VIDEO]:
             ack_msg = Message(MessageType.SYS_MESSAGE, emitter=self.username, receiver="", value="MESSAGE OK")
             ws.send(ack_msg.to_json())
+
+    def _write_sensor_to_memory(self, sensor_id: str, value):
+        if sensor_id == SENSOR_ID.JOYSTICK and isinstance(value, dict):
+            content = value.get("direction", str(value))
+        else:
+            content = str(value)
+
+        category = f"#{sensor_id}:"
+        _nl_main.write_memory(category=category, content=content, replace=True)
+        print(f"[MEMORY] {category} ← {content}")
+
+    def _handle_ia(self, nl: str, sender: str):
+        tools = {
+            "compter":      _nl_main.compter,
+            "gerer_led":    _nl_main.gerer_led,
+            "read_memory":  _nl_main.read_memory,
+            "write_memory": _nl_main.write_memory,
+        }
+
+        try:
+            result = execute_code_from(nl=nl, filter_path="main", tools=tools)
+            print(f"[IA] résultat: {result}")
+
+            if isinstance(result, tuple) and len(result) == 3:
+                action, couleur, led_number = result
+                self.send_sensor(SENSOR_ID.LED, {
+                    "action":     action,
+                    "couleur":    couleur,
+                    "led_number": led_number or 0,
+                })
+            elif result is not None:
+                self.send(str(result), sender)
+        except Exception as e:
+            print(f"[IA] erreur: {e}")
 
     def on_error(self, ws, error):
         print(f"\n[error] {error}")
@@ -191,12 +269,12 @@ class WSClient(QObject):
         return WSClient(Context.dev(), username)
 
     @staticmethod
-    def prod(username="Client"):
+    def prod(username="MAC_KILLIAN"):
         return WSClient(Context.prod(), username)
 
 if __name__ == "__main__":
     import sys
-    username = sys.argv[1] if len(sys.argv) > 1 else "Client"
+    username = sys.argv[1] if len(sys.argv) > 1 else "MAC_KILLIAN"
     client = WSClient.prod(username)
     client.connect()
  
