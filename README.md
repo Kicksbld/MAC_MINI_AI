@@ -47,4 +47,4 @@ Il est recommandé de lancer chaque composant dans un terminal séparé :
 
     kyutai
 
-    
+    # MAC_MINI_AI
